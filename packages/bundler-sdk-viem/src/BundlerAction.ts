@@ -64,25 +64,32 @@ export namespace BundlerAction {
       bundler3: { bundler3, generalAdapter1 },
     } = getChainAddresses(chainId);
 
-    let value = 0n;
-
-    for (const { type, args } of actions) {
-      if (type !== "nativeTransfer") continue;
-
-      const [owner, recipient, amount] = args;
-
-      if (
-        !isAddressEqual(owner, bundler3) &&
-        !isAddressEqual(owner, generalAdapter1) &&
-        (isAddressEqual(recipient, bundler3) ||
-          isAddressEqual(recipient, generalAdapter1))
-      )
-        value += amount;
-    }
-
     const encodedActions = actions.flatMap(
       BundlerAction.encode.bind(null, chainId),
     );
+
+    let value = 0n;
+
+    for (const action of actions) {
+      if (action.type !== "nativeTransfer") continue;
+
+      const [owner, recipient, amount] = action.args;
+
+      // nativeTransfer to bundler3 is a special case: it doesn't result in an encoded action
+      // because the ETH is already sent to the bundler via the multicall's value.
+      if (
+        isAddressEqual(recipient, bundler3) &&
+        !isAddressEqual(owner, bundler3) &&
+        !isAddressEqual(owner, generalAdapter1)
+      ) {
+        value += amount;
+      }
+    }
+
+    // Sum up the value required for each encoded action.
+    for (const call of encodedActions) {
+      value += call.value;
+    }
 
     return {
       to: bundler3,
